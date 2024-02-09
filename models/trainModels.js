@@ -1,24 +1,27 @@
 const mongoose = require("mongoose");
 
-// const StopSchema = new mongoose.Schema({
-//     station_id: {
-//         type: Number,
-//     },
-//     arrival_time: {
-//         type: String,
-//     },
-//     departure_time: {
-//         type: String,
-//     },
-//     fare: {
-//         type: Number,
-//     }
-// });
+const StopSchema = new mongoose.Schema({
+    station_id: {
+        type: Number,
+    },
+    arrival_time: {
+        type: String,
+    },
+    departure_time: {
+        type: String,
+    },
+    fare: {
+        type: Number,
+    }
+});
 
 const trainSchema = mongoose.Schema({
     train_id: { type: Number, required: true },
     train_name: { type: String, required: true },
     capacity: { type: Number, required: true },
+    stops: {
+        type: [StopSchema]
+    },
     service_start: {
         type: String
     },
