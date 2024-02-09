@@ -6,7 +6,7 @@ const users = require("./models/userModel");
 const station = require("./models/stationModel");
 const trains = require("./models/trainModels");
 const tickets = require("./models/ticketModel");
-
+const geolib = require("geolib");
 // Loading environment variables from .env file
 require('dotenv').config();
 
@@ -122,10 +122,10 @@ app.get("/api/stations/:id/trains", async (req, res) => {
   // console.log("all station", allStation(allTrains))
   const allStationArray = allStation(allTrains);
   const stationByID = allStationArray.filter(station => station.station_id == stationID);
-  if(stationByID.length > 0) {
+  if (stationByID.length > 0) {
     res.status(200).json(stationByID);
-  }else{
-    res.status(404).json({message: `station with id: ${stationID} was not found`});
+  } else {
+    res.status(404).json({ message: `station with id: ${stationID} was not found` });
   }
 });
 
@@ -193,8 +193,94 @@ app.put("/api/wallets/:id", async (req, res) => {
 // create tickets
 app.post("/api/tickets", async (req, res) => {
   const ticketData = req.body;
-  const result = await tickets.create(ticketData)
-  res.send(result);
+  const stationFrom = ticketData.station_from;
+  const stationTo = ticketData.station_to;
+  const user = await users.findOne({ user_id: ticketData.wallet_id });
+  let getStation = [];
+  const allTrain = await trains.find({})
+  for (let i = 0; i < allTrain.length; i++) {
+    const element = allTrain[i];
+    const stops = element.stops;
+    let fromFlag = 0;
+    let toFlag = 0;
+    let toStopObject = {};
+    let forStopObject = {};
+
+    for (let j = 0; j < stops.length; j++) {
+      if (stationFrom == stops[j].station_id && stops[j].departure_time > ticketData.time_after) {
+        fromFlag = 1;
+        forStopObject = stops[j]
+        getStation.push(forStopObject);
+      }
+      if (stationTo == stops[j].station_id && stops[j].departure_time > ticketData.time_after) {
+        toFlag = 1;
+        toStopObject = stops[j];
+        getStation.push(toStopObject);
+      }
+    }
+    if (toFlag == 0 && fromFlag == 0) {
+      getStation = [];
+    }
+  }
+  if (getStation.length == 0) {
+    return res.status(404).send({ message: `no ticket available for station: ${ticketData.station_from} to station: ${ticketData.station_to}` });
+  }
+  const min = 1;
+  const max = 10000;
+  const randomNum = Math.floor(Math.random() * (max - min + 1)) + min;
+  const gettingBalance = user.balance;
+  if (gettingBalance < getStation[getStation.length - 1].fare) {
+    return res.status(404).send({ message: `recharge amount: ${getStation[getStation.length - 1].fare - gettingBalance} to purchase the ticket` });
+  }
+  const newBalance = gettingBalance - getStation[getStation.length - 1].fare;
+  await users.findOneAndUpdate({ user_id: ticketData.wallet_id }, { balance: newBalance });
+  const responseObject = {
+    ticket_id: randomNum,
+    balance: user.balance,
+    wallet_id: ticketData.wallet_id,
+    stations: getStation
+  }
+  await tickets.create(responseObject)
+  res.status(201).json(responseObject);
+});
+
+app.get("/api/routes", async (req, res) => {
+  const { from, to, optimize } = req.query;
+  const optimizations = optimize ? optimize : "time";
+  const localStation = await station.find({});
+  console.log("local station", localStation);
+  if (!from && !to) {
+    return res.status(403).json({
+      message: `no routes available from station: ${from} to station:
+    ${to}`
+    });
+  }
+  const fromStation = localStation.find((station) => station.station_id == from);
+  const toStation = localStation.find((station) => station.station_id == to);
+  console.log(fromStation, toStation);
+
+  if (!fromStation || !toStation) {
+    return res.status(403).json({
+      message: `no routes available from station: ${from} to station:
+    ${to}`
+    });
+  }
+
+  if (optimizations) {
+    const distance = geolib.getDistance(
+      { latitude: fromStation.latitude, longitude: fromStation.longitude },
+      { latitude: toStation.latitude, longitude: toStation.longitude }
+    );
+    res.status(200).json({
+      message: "API called successfully",
+      from: fromStation,
+      to: toStation,
+      distance,
+      total_cost: toStation.fare + fromStation.fare,
+      total_time: "",
+      stations: localStation
+    });
+  }
 });
 
 
